@@ -676,36 +676,52 @@ class DNSdumpster(enumratorBaseThreaded):
 class Virustotal(enumratorBaseThreaded):
     def __init__(self, domain, subdomains=None, q=None, silent=False, verbose=True):
         subdomains = subdomains or []
-        base_url = 'https://www.virustotal.com/ui/domains/{domain}/subdomains'
+        base_url = 'https://www.virustotal.com/api/v3/domains/{domain}/subdomains'
         self.engine_name = "Virustotal"
+        self.apikey = "ddddddd" #os.getenv("VT_APIKEY")
+
+        if self.apikey is None:
+            vt_apikey = input(B + "[+] Enter VirusTotal API key, press Enter for none: " + W).strip()
+            if vt_apikey != "":
+                self.apikey = vt_apikey
+
         self.q = q
-        super(Virustotal, self).__init__(base_url, self.engine_name, domain, subdomains, q=q, silent=silent, verbose=verbose)
+        super(Virustotal, self).__init__(
+            base_url, self.engine_name, domain, subdomains,
+            q=q, silent=silent, verbose=verbose
+        )
         self.url = self.base_url.format(domain=self.domain)
         return
 
     # the main send_req need to be rewritten
     def send_req(self, url):
         try:
+            self.headers.update({'X-ApiKey': self.apikey})
             resp = self.session.get(url, headers=self.headers, timeout=self.timeout)
         except Exception as e:
             self.print_(e)
             resp = None
-
         return self.get_response(resp)
 
     # once the send_req is rewritten we don't need to call this function, the stock one should be ok
     def enumerate(self):
-        while self.url != '':
-            resp = self.send_req(self.url)
-            resp = json.loads(resp)
-            if 'error' in resp:
-                self.print_(R + "[!] Error: Virustotal probably now is blocking our requests" + W)
-                break
-            if 'links' in resp and 'next' in resp['links']:
-                self.url = resp['links']['next']
-            else:
-                self.url = ''
-            self.extract_domains(resp)
+        if self.apikey:
+            while self.url != '':
+                resp = self.send_req(self.url)
+                resp = json.loads(resp)
+                if 'error' in resp:
+                    self.print_(R + "Error Code: {}".format(resp['error']["code"]) + W)
+                    self.print_(R + "Virus Total Server Message: {}".format(resp['error']["message"]) + W)
+                    break
+                if 'links' in resp and 'next' in resp['links']:
+                    self.url = resp['links']['next']
+                else:
+                    self.url = ''
+                self.extract_domains(resp)
+        else:
+            self.print_(R + "[!] Error: VirusTotal API key environment variable not found. Skipping" + W)
+            self.print_(R + "[!] set VT_APIKEY to your virus total API key using: `export VT_APIKEY=Your_VT_API_KEY_VALUE`" + W)
+            self.print_(B + "[!] To get a VT APIKEY, register at https://www.virustotal.com/gui/join-us" + W)
         return self.subdomains
 
     def extract_domains(self, resp):
@@ -722,6 +738,8 @@ class Virustotal(enumratorBaseThreaded):
                         self.subdomains.append(subdomain.strip())
         except Exception:
             pass
+
+
 
 
 class ThreatCrowd(enumratorBaseThreaded):
