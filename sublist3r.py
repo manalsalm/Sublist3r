@@ -16,10 +16,11 @@ import threading
 import socket
 import json
 from collections import Counter
+import requests
 
 # external modules
 from subbrute import subbrute
-import dns.resolver
+import dnslib
 import requests
 
 # Python 2.x and 3.x compatiablity
@@ -152,10 +153,7 @@ class enumratorBase(object):
         self.silent = silent
         self.verbose = verbose
         self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.8',
-            'Accept-Encoding': 'gzip',
+
         }
         self.print_banner()
 
@@ -283,11 +281,11 @@ class GoogleEnum(enumratorBaseThreaded):
 
     def extract_domains(self, resp):
         links_list = list()
-        link_regx = re.compile('<cite.*?>(.*?)<\/cite>')
+        link_regx = re.compile('q=https?://(?:[-\w.]*|(?:%[\da-fA-F]{2}))')
         try:
             links_list = link_regx.findall(resp)
             for link in links_list:
-                link = re.sub('<span.*>', '', link)
+                link = re.sub('q=', '', link)
                 if not link.startswith('http'):
                     link = "http://" + link
                 subdomain = urlparse.urlparse(link).netloc
@@ -295,6 +293,7 @@ class GoogleEnum(enumratorBaseThreaded):
                     if self.verbose:
                         self.print_("%s%s: %s%s" % (R, self.engine_name, W, subdomain))
                     self.subdomains.append(subdomain.strip())
+                    
         except Exception:
             pass
         return links_list
@@ -332,9 +331,10 @@ class YahooEnum(enumratorBaseThreaded):
         return
 
     def extract_domains(self, resp):
-        link_regx2 = re.compile('<span class=" fz-.*? fw-m fc-12th wr-bw.*?">(.*?)</span>')
-        link_regx = re.compile('<span class="txt"><span class=" cite fw-xl fz-15px">(.*?)</span>')
+        link_regx2 = re.compile('<div style="visibility:hidden;"class="d-ib p-abs t-0 l-0 fz-14 lh-20 fc-obsidian wr-bw ls-n pb-4">(.*?)</div>')
+        link_regx = re.compile('<span>(.*?)</span>')
         links_list = []
+        print(resp)
         try:
             links = link_regx.findall(resp)
             links2 = link_regx2.findall(resp)
@@ -948,7 +948,7 @@ def main(domain, threads, savefile, ports, silent, verbose, enable_bruteforce, e
     if engines is None:
         chosenEnums = [
             BaiduEnum, YahooEnum, GoogleEnum, BingEnum, AskEnum,
-            NetcraftEnum, DNSdumpster, Virustotal, ThreatCrowd,
+            NetcraftEnum, DNSdumpster, ThreatCrowd,
             CrtSearch, PassiveDNS
         ]
     else:
