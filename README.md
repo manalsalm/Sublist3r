@@ -182,4 +182,4 @@ Sublist3r is licensed under the GNU GPL license. take a look at the [LICENSE](ht
 * Special Thanks to [Ibrahim Mosaad](https://twitter.com/ibrahim_mosaad) for his great contributions that helped in improving the tool.
 
 ## Version
-**Current version is 1.0**
+**Current version is 1.1**
