@@ -172,6 +172,7 @@ Sublist3r is licensed under the GNU GPL license. take a look at the [LICENSE](ht
 
 ## Credits
 
+* [aboul3la](https://github.com/aboul3la/sublist3r) - The creator of Sublist3r; turbolist3r adds some features but is otherwise a near clone of sublist3r.
 * [TheRook](https://github.com/TheRook) - The bruteforce module was based on his script **subbrute**. 
 * [Bitquark](https://github.com/bitquark) - The Subbrute's wordlist was based on his research **dnspop**. 
 * [PaulSec](https://github.com/PaulSec) - The proccessing of response from dnsdumpster base on the script **API-dnsdumpster.com**
