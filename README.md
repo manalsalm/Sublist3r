@@ -174,6 +174,7 @@ Sublist3r is licensed under the GNU GPL license. take a look at the [LICENSE](ht
 
 * [TheRook](https://github.com/TheRook) - The bruteforce module was based on his script **subbrute**. 
 * [Bitquark](https://github.com/bitquark) - The Subbrute's wordlist was based on his research **dnspop**. 
+* [PaulSec](https://github.com/PaulSec) - The proccessing of response from dnsdumpster base on the script **API-dnsdumpster.com**
 
 ## Thanks
 
