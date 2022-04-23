@@ -16,11 +16,14 @@ import threading
 import socket
 import json
 from collections import Counter
+from bs4 import BeautifulSoup
+import pandas as pd
 import requests
 
 # external modules
 from subbrute import subbrute
 import dnslib
+import dns.resolver
 import requests
 
 # Python 2.x and 3.x compatiablity
@@ -81,6 +84,7 @@ def banner():
                 |____/ \__,_|_.__/|_|_|___/\__|____/|_|%s%s
 
                 # Coded By Ahmed Aboul-Ela - @aboul3la
+                # DNSdump code for extracting the domain from PaulSec/API-dnsdumpster.com @PaulSec
                 # Modfiyied by Manal  - @manalsalm
     """ % (R, W, Y))
 
@@ -105,6 +109,12 @@ def parse_args():
     parser.add_argument('-e', '--engines', help='Specify a comma-separated list of search engines')
     parser.add_argument('-o', '--output', help='Save the results to text file')
     parser.add_argument('-n', '--no-color', help='Output without color', default=False, action='store_true')
+    parser.add_argument('-a', '--analyze', default=False, help='Do reverse DNS analysis and output results', action="store_true")
+    parser.add_argument('--saverdns', help='Save reverse DNS analysis to specified file')
+    parser.add_argument('--inputfile', help='Read domains from specified file (perhaps from other tool) and use instead of searching engines. Use with -a to analyze domains')
+    parser.add_argument('--debug', default=False, help='Enable technical debug output', action="store_true")
+    parser.add_argument('-r', '--resolvers',  help='File with DNS servers to populate as resolvers, one per line')
+    parser.add_argument('-q', '--quiet', help='Show only result', default=False, action='store_true')
     return parser.parse_args()
 
 
@@ -154,7 +164,10 @@ class enumratorBase(object):
         self.silent = silent
         self.verbose = verbose
         self.headers = {
-
+          'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.8',
+            'Accept-Encoding': 'gzip',
         }
         self.print_banner()
 
@@ -180,7 +193,8 @@ class enumratorBase(object):
     def get_response(self, response):
         if response is None:
             return 0
-        return response.text if hasattr(response, "text") else response.content
+        #print(BeautifulSoup(response.content, 'html.parser'))
+        return response.text if hasattr(response, "text") else BeautifulSoup(response.content, 'html.parser')
 
     def check_max_subdomains(self, count):
         if self.MAX_DOMAINS == 0:
@@ -335,7 +349,6 @@ class YahooEnum(enumratorBaseThreaded):
         link_regx2 = re.compile('<div style="visibility:hidden;"class="d-ib p-abs t-0 l-0 fz-14 lh-20 fc-obsidian wr-bw ls-n pb-4">(.*?)</div>')
         link_regx = re.compile('<span>(.*?)</span>')
         links_list = []
-        print(resp)
         try:
             links = link_regx.findall(resp)
             links2 = link_regx2.findall(resp)
@@ -608,30 +621,39 @@ class DNSdumpster(enumratorBaseThreaded):
 
     def check_host(self, host):
         is_valid = False
+        response = None
+        use_tcp=False
         Resolver = dns.resolver.Resolver()
         Resolver.nameservers = ['8.8.8.8', '8.8.4.4']
         self.lock.acquire()
         try:
-            ip = Resolver.query(host, 'A')[0].to_text()
+            ip = Resolver.query.send(resolver, 53, use_tcp, timeout=3)
             if ip:
                 if self.verbose:
                     self.print_("%s%s: %s%s" % (R, self.engine_name, W, host))
                 is_valid = True
                 self.live_subdomains.append(host)
-        except:
+        except Exception as e:
             pass
+            
+            
         self.lock.release()
         return is_valid
+        
 
     def req(self, req_method, url, params=None):
         params = params or {}
         headers = dict(self.headers)
         headers['Referer'] = 'https://dnsdumpster.com'
+
         try:
             if req_method == 'GET':
                 resp = self.session.get(url, headers=headers, timeout=self.timeout)
             else:
-                resp = self.session.post(url, data=params, headers=headers, timeout=self.timeout)
+                #print(params)
+                data = {'csrfmiddlewaretoken': params['csrfmiddlewaretoken'], 'targetip': self.domain, 'user': 'free'}
+                cookies = {'csrftoken': params['csrfmiddlewaretoken'],}
+                resp = self.session.post(url, cookies=cookies, data=data, headers=headers, timeout=self.timeout)
         except Exception as e:
             self.print_(e)
             resp = None
@@ -646,15 +668,60 @@ class DNSdumpster(enumratorBaseThreaded):
         self.lock = threading.BoundedSemaphore(value=70)
         resp = self.req('GET', self.base_url)
         token = self.get_csrftoken(resp)
-        params = {'csrfmiddlewaretoken': token, 'targetip': self.domain}
+        params = {'csrfmiddlewaretoken': token}
         post_resp = self.req('POST', self.base_url, params)
-        self.extract_domains(post_resp)
+        self.extract_domains1(post_resp)
         for subdomain in self.subdomains:
             t = threading.Thread(target=self.check_host, args=(subdomain,))
             t.start()
             t.join()
         return self.live_subdomains
+        
+    def retrieve_results(self, table):
+        res = []
+        trs = table.findAll('tr')
+        for tr in trs:
+            tds = tr.findAll('td')
+            pattern_ip = r'([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})'
+            try:
+                ip = re.findall(pattern_ip, tds[1].text)[0]
+                domain = str(tds[0]).split('<br/>')[0].split('>')[1].split('<')[0]
+                header = ' '.join(tds[0].text.replace('\n', '').split(' ')[1:])
+                reverse_dns = tds[1].find('span', attrs={}).text
 
+                additional_info = tds[2].text
+                country = tds[2].find('span', attrs={}).text
+                autonomous_system = additional_info.split(' ')[0]
+                provider = ' '.join(additional_info.split(' ')[1:])
+                provider = provider.replace(country, '')
+                data = {'domain': domain,
+                        'ip': ip,
+                        'reverse_dns': reverse_dns,
+                        'as': autonomous_system,
+                        'provider': provider,
+                        'country': country,
+                        'header': header}
+                res.append(data)
+            except:
+                pass
+        return res
+    def retrieve_txt_record(self, table):
+        res = []
+        for td in table.findAll('td'):
+            res.append(td.text)
+        return res
+        
+    def extract_domains1(self, resp):
+        soap = BeautifulSoup(resp, 'html.parser')
+        tables = soap.findAll('table')
+        res = {}
+        res['domain'] = self.domain
+        res['dns_records'] = {}
+        res['dns_records']['dns'] = self.retrieve_results(tables[0])
+        res['dns_records']['mx'] = self.retrieve_results(tables[1])
+        res['dns_records']['txt'] = self.retrieve_txt_record(tables[2])
+        res['dns_records']['host'] = self.retrieve_results(tables[3])
+        print(pd.DataFrame.from_dict(res['dns_records']['host']).get('domain'))
     def extract_domains(self, resp):
         tbl_regex = re.compile('<a name="hostanchor"><\/a>Host Records.*?<table.*?>(.*?)</table>', re.S)
         link_regex = re.compile('<td class="col-md-4">(.*?)<br>', re.S)
@@ -1014,12 +1081,27 @@ def interactive():
     enable_bruteforce = args.bruteforce
     verbose = args.verbose
     engines = args.engines
+    inputfile = args.inputfile
+    analyze = args.analyze
+    analysisfile = args.saverdns
+    debug = args.debug
+    server_file = args.resolvers
+    quiet = args.quiet
+    
+    if(debug):
+        print("Debugging output enabled for analysis module")
     if verbose or verbose is None:
         verbose = True
     if args.no_color:
         no_color()
-    banner()
-    res = main(domain, threads, savefile, ports, silent=False, verbose=verbose, enable_bruteforce=enable_bruteforce, engines=engines)
+    if quiet:
+        silent = True
+    else:
+        silent = False
+        banner()
+        
+    res = main(domain, threads, savefile, ports, silent, verbose=verbose, enable_bruteforce=enable_bruteforce, engines=engines)
 
 if __name__ == "__main__":
     interactive()
+    
