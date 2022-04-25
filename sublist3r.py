@@ -84,8 +84,8 @@ def banner():
                 |____/ \__,_|_.__/|_|_|___/\__|____/|_|%s%s
 
                 # Coded By Ahmed Aboul-Ela - @aboul3la
-                # DNSdump code for extracting the domain from PaulSec/API-dnsdumpster.com @PaulSec
-                # Modfiyied by Manal  - @manalsalm
+                # DNSdump domain extraction from PaulSec/API-dnsdumpster.com @PaulSec
+                # forked by Manal  - @manalsalm
     """ % (R, W, Y))
 
 
@@ -165,9 +165,7 @@ class enumratorBase(object):
         self.verbose = verbose
         self.headers = {
           'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.8',
-            'Accept-Encoding': 'gzip',
+
         }
         self.print_banner()
 
@@ -193,8 +191,8 @@ class enumratorBase(object):
     def get_response(self, response):
         if response is None:
             return 0
-        #print(BeautifulSoup(response.content, 'html.parser'))
-        return response.text if hasattr(response, "text") else BeautifulSoup(response.content, 'html.parser')
+            
+        return str(BeautifulSoup(response.text.encode('utf-8'), 'html.parser') ) if hasattr(response, "text") else BeautifulSoup(response.content, 'html.parser')
 
     def check_max_subdomains(self, count):
         if self.MAX_DOMAINS == 0:
@@ -282,7 +280,15 @@ class enumratorBaseThreaded(multiprocessing.Process, enumratorBase):
         for domain in domain_list:
             self.q.append(domain)
 
+class SearchResult:
+    def __init__(self, url, title, description):
+        self.url = url
+        self.title = title
+        self.description = description
 
+    def __repr__(self):
+        return f"SearchResult(url={self.url}, title={self.title}, description={self.description})"
+        
 class GoogleEnum(enumratorBaseThreaded):
     def __init__(self, domain, subdomains=None, q=None, silent=False, verbose=True):
         subdomains = subdomains or []
@@ -294,13 +300,14 @@ class GoogleEnum(enumratorBaseThreaded):
         self.q = q
         return
 
+
     def extract_domains(self, resp):
         links_list = list()
-        link_regx = re.compile('q=https?://(?:[-\w.]*|(?:%[\da-fA-F]{2}))')
+        link_regx = re.compile('url\?q=https?://(?:[-\w.]*|(?:%[\da-fA-F]{2}))')
         try:
             links_list = link_regx.findall(resp)
             for link in links_list:
-                link = re.sub('q=', '', link)
+                link = re.sub('url\?q=', '', link)
                 if not link.startswith('http'):
                     link = "http://" + link
                 subdomain = urlparse.urlparse(link).netloc
